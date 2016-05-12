@@ -205,7 +205,7 @@ static HRESULT _CompressBC_Parallel( _In_ const Image& image, _In_ const Image& 
     assert( image.height == result.height );
 
     const DXGI_FORMAT format = image.format;
-    size_t sbpp = BitsPerPixel( format );
+    size_t sbpp = BitsPerPixel( format );//sbpp为size_of_bits_per_pixel，每像素的位数（稍后换算成了字节数），如原图为R8G8B8A8，则sbpp为8+8+8+8=32
     if ( !sbpp )
         return E_FAIL;
 
@@ -216,73 +216,73 @@ static HRESULT _CompressBC_Parallel( _In_ const Image& image, _In_ const Image& 
     }
 
     // Round to bytes
-    sbpp = ( sbpp + 7 ) / 8;
+    sbpp = ( sbpp + 7 ) / 8;//换算成字节
 
-    const uint8_t *pEnd = image.pixels + image.slicePitch;
+    const uint8_t *pEnd = image.pixels + image.slicePitch;// slicePitch为原图所占字节数，如原图为512*512，R8G8B8A8，则slicePitch为512*512*4字节 = 1048576，pixels为原图首地址，加上偏移量，到原图图像End的地址
 
     // Determine BC format encoder
     BC_ENCODE pfEncode;
-    size_t blocksize;
+    size_t blocksize;//根据要写入的图片格式，确定写入的图片里一个block的大小，单位为字节，比如DXT1的一个block，由2个16位R5G6B5的颜色，加上16个2位的索引（16个像素）组成，则blocksize为（2*16+16*2）/8 = 8（字节），注意写入图片的一个block在DXT1里对应原图的4*4个像素
     DWORD cflags;
     if ( !_DetermineEncoderSettings( result.format, pfEncode, blocksize, cflags ) )
         return HRESULT_FROM_WIN32( ERROR_NOT_SUPPORTED );
 
     // Refactored version of loop to support parallel independance
-    const size_t nBlocks = std::max<size_t>(1, (image.width + 3) / 4 ) * std::max<size_t>(1, (image.height + 3) / 4 );
+    const size_t nBlocks = std::max<size_t>(1, (image.width + 3) / 4 ) * std::max<size_t>(1, (image.height + 3) / 4 );//nBlocks为Block的数量，因为Block为4*4，所以block数量为(宽/4)*(长/4)
 
     bool fail = false;
 
 #pragma omp parallel for
     for( int nb=0; nb < static_cast<int>( nBlocks ); ++nb )
     {
-        int nbWidth = std::max<int>(1, int( (image.width + 3) / 4 ) );
+        int nbWidth = std::max<int>(1, int( (image.width + 3) / 4 ) );//宽的方向上Block的数量
 
-        int y = nb / nbWidth;
-        int x = ( nb - (y*nbWidth) ) * 4;
-        y *= 4;
+		int y = nb / nbWidth;
+		int x = (nb - (y*nbWidth)) * 4;//x是当前Block第一个像素（左上角）在原图里的横坐标
+        y *= 4;//y是当前Block第一个像素（左上角）在原图里的纵坐标
 
-        assert( (x >= 0) && (x < int(image.width)) );
-        assert( (y >= 0) && (y < int(image.height)) );
+		assert((x >= 0) && (x < int(image.width)));
+		assert((y >= 0) && (y < int(image.height)));
 
-        size_t rowPitch = image.rowPitch;
-        const uint8_t *pSrc = image.pixels + (y*rowPitch) + (x*sbpp);
+        size_t rowPitch = image.rowPitch;//一行占得字节数，512*512，R8G8B8A8的图为512*（8+8+8+8）/8 = 2048
+        const uint8_t *pSrc = image.pixels + (y*rowPitch) + (x*sbpp);//pSrc指向当前Block第一个像素
 
-        uint8_t *pDest = result.pixels + (nb*blocksize);
+        uint8_t *pDest = result.pixels + (nb*blocksize);//pDest指向当前block在要写入的图像中对应的像素
 
-        size_t ph = std::min<size_t>( 4, image.height - y );
+        size_t ph = std::min<size_t>( 4, image.height - y );//ph和pw为要处理的block的长和宽，因为当（x,y）为最右边和下面边界上时，离边界太近（height-y或者width-x小于4），会出现不足以形成4*4的block时的情况，此时ph和pw小于4，避免越界
         size_t pw = std::min<size_t>( 4, image.width - x );
         assert( pw > 0 && ph > 0 );
 
-        ptrdiff_t bytesLeft = pEnd - pSrc;
+        ptrdiff_t bytesLeft = pEnd - pSrc;//原图剩余所有未读字节
         assert( bytesLeft > 0 );
-        size_t bytesToRead = std::min<size_t>( rowPitch, bytesLeft );
+        size_t bytesToRead = std::min<size_t>( rowPitch, bytesLeft );//剩余不足一行则读剩余大小，剩余超过一行，则读一行
 
-        XMVECTOR temp[16];
-        if ( !_LoadScanline( &temp[0], pw, pSrc, bytesToRead, format ) )
+        XMVECTOR temp[16];//16个像素容量的temp，每个格子放一个像素
+        if ( !_LoadScanline( &temp[0], pw, pSrc, bytesToRead, format ) )// 当前block第1行读4个像素
             fail = true;
 
         if ( ph > 1 )
         {
             bytesToRead = std::min<size_t>( rowPitch, bytesLeft - rowPitch );
-            if ( !_LoadScanline( &temp[4], pw, pSrc + rowPitch, bytesToRead, format ) )
+            if ( !_LoadScanline( &temp[4], pw, pSrc + rowPitch, bytesToRead, format ) )//如果剩余超过1行，再读当前block第2行的4个像素
                 fail = true;
 
             if ( ph > 2 )
             {
                 bytesToRead = std::min<size_t>( rowPitch, bytesLeft - rowPitch * 2 );
-                if ( !_LoadScanline( &temp[8], pw, pSrc + rowPitch*2, bytesToRead, format ) )
+                if ( !_LoadScanline( &temp[8], pw, pSrc + rowPitch*2, bytesToRead, format ) )//如果剩余超过2行，再读当前block第3行的4个像素
                     fail = true;
 
                 if ( ph > 3 )
                 {
                     bytesToRead = std::min<size_t>( rowPitch, bytesLeft - rowPitch * 3 );
-                    if ( !_LoadScanline( &temp[12], pw, pSrc + rowPitch*3, bytesToRead, format ) )
+                    if ( !_LoadScanline( &temp[12], pw, pSrc + rowPitch*3, bytesToRead, format ) )//如果剩余超过3行，再读当前block第4行的4个像素
                         fail = true;
                 }
             }
         }
 
-        if ( pw != 4 || ph != 4 )
+        if ( pw != 4 || ph != 4 )//若不足以形成4*4的block，用黑色（0,0,0,1）填充block中不足的像素
         {
             // Replicate pixels for partial block
             static const size_t uSrc[] = { 0, 0, 0, 1 };
@@ -315,7 +315,7 @@ static HRESULT _CompressBC_Parallel( _In_ const Image& image, _In_ const Image& 
         if ( pfEncode )
             pfEncode( pDest, temp, bcflags );
         else
-            D3DXEncodeBC1( pDest, temp, alphaRef, bcflags );
+            D3DXEncodeBC1( pDest, temp, alphaRef, bcflags );//temp为block，pDest为导出的纹理对应的一个像素点
     }
 
     return (fail) ? E_FAIL : S_OK;
@@ -639,7 +639,7 @@ HRESULT Compress( const Image* srcImages, size_t nimages, const TexMetadata& met
 
     TexMetadata mdata2 = metadata;
     mdata2.format = format;
-    HRESULT hr = cImages.Initialize( mdata2 );
+    HRESULT hr = cImages.Initialize( mdata2 );//这里Image得到了输出图片的属性，包括大小像素格式等等
     if ( FAILED(hr) )
         return hr;
 
@@ -656,7 +656,7 @@ HRESULT Compress( const Image* srcImages, size_t nimages, const TexMetadata& met
         return E_POINTER;
     }
 
-    for( size_t index=0; index < nimages; ++index )
+    for( size_t index=0; index < nimages; ++index )// nimages是mipmap的级别，512*512的原图，nimages是10
     {
         assert( dest[ index ].format == format );
 
@@ -675,7 +675,7 @@ HRESULT Compress( const Image* srcImages, size_t nimages, const TexMetadata& met
 #else
             if ( compress & TEX_COMPRESS_PARALLEL )
             {
-                hr = _CompressBC_Parallel( src, dest[ index ], _GetBCFlags( compress ), _GetSRGBFlags( compress ), alphaRef );
+                hr = _CompressBC_Parallel( src, dest[ index ], _GetBCFlags( compress ), _GetSRGBFlags( compress ), alphaRef );// dest[0]为512*512，dest[1]为256*256，以此类推，dest[9]为1*1
                 if ( FAILED(hr) )
                 {
                     cImages.Release();

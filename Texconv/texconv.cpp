@@ -69,8 +69,8 @@ static_assert( OPT_MAX <= 64, "dwOptions is a DWORD64 bitfield" );
 
 struct SConversion
 {
-    wchar_t szSrc [MAX_PATH];
-    wchar_t szDest[MAX_PATH];
+    WCHAR szSrc [MAX_PATH];
+    WCHAR szDest[MAX_PATH];
 };
 
 struct SValue
@@ -324,7 +324,7 @@ inline static bool ispow2(size_t x)
 
 #pragma prefast(disable : 26018, "Only used with static internal arrays")
 
-DWORD LookupByName(const wchar_t *pName, const SValue *pArray)
+DWORD LookupByName(const WCHAR *pName, const SValue *pArray)
 {
     while(pArray->pName)
     {
@@ -337,7 +337,7 @@ DWORD LookupByName(const wchar_t *pName, const SValue *pArray)
     return 0;
 }
 
-const wchar_t* LookupByValue(DWORD pValue, const SValue *pArray)
+const WCHAR* LookupByValue(DWORD pValue, const SValue *pArray)
 {
     while(pArray->pName)
     {
@@ -656,9 +656,9 @@ int __cdecl wmain(_In_ int argc, _In_z_count_(argc) wchar_t* argv[])
     DWORD dwNormalMap = 0;
     float nmapAmplitude = 1.f;
 
-    wchar_t szPrefix   [MAX_PATH];
-    wchar_t szSuffix   [MAX_PATH];
-    wchar_t szOutputDir[MAX_PATH];
+    WCHAR szPrefix   [MAX_PATH];
+    WCHAR szSuffix   [MAX_PATH];
+    WCHAR szOutputDir[MAX_PATH];
 
     szPrefix[0]    = 0;
     szSuffix[0]    = 0;
@@ -671,13 +671,22 @@ int __cdecl wmain(_In_ int argc, _In_z_count_(argc) wchar_t* argv[])
         wprintf( L"Failed to initialize COM (%08X)\n", hr);
         return 1;
     }
-
+	//xuyunhan
+	argc = 8;
+	argv[0] = L"DDDD:\\DDS\texconv.exe"; argv[1] = L"-ft"; argv[2] = L"DDS"; argv[3] = L"E:\\DDS\\input.tga"; argv[4] = L"-o"; argv[5] = L"E:\\DDS"; argv[6] = L"-f"; argv[7] = L"BC1_UNORM";
     // Process command line
     DWORD64 dwOptions = 0;
     std::list<SConversion> conversion;
+// 	wprintf(L"START\n");
+// 	for (size_t i = 0; i < argc; i++)
+// 	{
+// 		wprintf(L"%s\n", argv[i]);
+// 	}
+// 	wprintf(L"END\n");
 
     for(int iArg = 1; iArg < argc; iArg++)
     {
+
         PWSTR pArg = argv[iArg];
 
         if(('-' == pArg[0]) || ('/' == pArg[0]))
@@ -968,8 +977,8 @@ int __cdecl wmain(_In_ int argc, _In_z_count_(argc) wchar_t* argv[])
 
     if(conversion.empty())
     {
-        PrintUsage();
-        return 0;
+         PrintUsage();
+          return 0;
     }
 
     if(~dwOptions & (DWORD64(1) << OPT_NOLOGO))
@@ -984,7 +993,7 @@ int __cdecl wmain(_In_ int argc, _In_z_count_(argc) wchar_t* argv[])
 
     wcscpy_s(szPrefix, MAX_PATH, szOutputDir);
 
-    const wchar_t* fileTypeName = LookupByValue(FileType, g_pSaveFileTypes);
+    const WCHAR* fileTypeName = LookupByValue(FileType, g_pSaveFileTypes);
 
     if (fileTypeName)
     {
@@ -1028,8 +1037,8 @@ int __cdecl wmain(_In_ int argc, _In_z_count_(argc) wchar_t* argv[])
         wprintf( L"reading %ls", pConv->szSrc );
         fflush(stdout);
 
-        wchar_t ext[_MAX_EXT];
-        wchar_t fname[_MAX_FNAME];
+        WCHAR ext[_MAX_EXT];
+        WCHAR fname[_MAX_FNAME];
         _wsplitpath_s( pConv->szSrc, nullptr, 0, nullptr, 0, fname, _MAX_FNAME, ext, _MAX_EXT );
 
         TexMetadata info;
@@ -1737,7 +1746,7 @@ int __cdecl wmain(_In_ int argc, _In_z_count_(argc) wchar_t* argv[])
             wprintf( L"\n");
 
             // Figure out dest filename
-            wchar_t *pchSlash, *pchDot;
+            WCHAR *pchSlash, *pchDot;
 
             wcscpy_s(pConv->szDest, MAX_PATH, szPrefix);
 

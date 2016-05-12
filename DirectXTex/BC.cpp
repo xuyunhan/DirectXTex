@@ -80,7 +80,7 @@ static void OptimizeRGB(_Out_ HDRColorA *pX, _Out_ HDRColorA *pY,
     HDRColorA X = (flags & BC_FLAGS_UNIFORM) ? HDRColorA(1.f, 1.f, 1.f, 1.f) : g_Luminance;
     HDRColorA Y = HDRColorA(0.0f, 0.0f, 0.0f, 1.0f);
 
-    for(size_t iPoint = 0; iPoint < NUM_PIXELS_PER_BLOCK; iPoint++)
+    for(size_t iPoint = 0; iPoint < NUM_PIXELS_PER_BLOCK; iPoint++)//这个循环找block里颜色的两个极值，rgb最大的放Y，最小的放X
     {
 #ifdef COLOR_WEIGHTS
         if(pPoints[iPoint].a > 0.0f)
@@ -104,16 +104,16 @@ static void OptimizeRGB(_Out_ HDRColorA *pX, _Out_ HDRColorA *pY,
             if(pPoints[iPoint].b > Y.b)
                 Y.b = pPoints[iPoint].b;
         }
-    }
+    }//找到两个极值
 
     // Diagonal axis
-    HDRColorA AB;
+    HDRColorA AB;//放两个极值RGB分量的差值
 
     AB.r = Y.r - X.r;
     AB.g = Y.g - X.g;
     AB.b = Y.b - X.b;
 
-    float fAB = AB.r * AB.r + AB.g * AB.g + AB.b * AB.b;
+    float fAB = AB.r * AB.r + AB.g * AB.g + AB.b * AB.b;//算两个极值差的平方和
 
     // Single color block.. no need to root-find
     if(fAB < FLT_MIN)
@@ -231,8 +231,8 @@ static void OptimizeRGB(_Out_ HDRColorA *pX, _Out_ HDRColorA *pY,
 
         float fLen = (Dir.r * Dir.r + Dir.g * Dir.g + Dir.b * Dir.b);
 
-        if(fLen < (1.0f / 4096.0f))
-            break;
+//         if(fLen < (1.0f / 4096.0f))
+//             break;
 
         float fScale = fSteps / fLen;
 
@@ -376,11 +376,11 @@ static void EncodeBC1(_Out_ D3DX_BC1 *pBC, _In_reads_(NUM_PIXELS_PER_BLOCK) cons
     static_assert( sizeof(D3DX_BC1) == 8, "D3DX_BC1 should be 8 bytes" );
 
     // Determine if we need to colorkey this block
-    size_t uSteps;
+    size_t uSteps;// 这个不知道干嘛用的
     
     if (bColorKey)
     {
-        size_t uColorKey = 0;
+        size_t uColorKey = 0;//放ColorKey像素的数目
 
         for(size_t i = 0; i < NUM_PIXELS_PER_BLOCK; ++i)
         {
@@ -388,7 +388,7 @@ static void EncodeBC1(_Out_ D3DX_BC1 *pBC, _In_reads_(NUM_PIXELS_PER_BLOCK) cons
                 uColorKey++;
         }
 
-        if(NUM_PIXELS_PER_BLOCK == uColorKey)
+        if(NUM_PIXELS_PER_BLOCK == uColorKey)//若16个像素全是ColorKey，则整个block填黑白两色，索引全部指向白色
         {
             pBC->rgb[0] = 0x0000;
             pBC->rgb[1] = 0xffff;
@@ -396,7 +396,7 @@ static void EncodeBC1(_Out_ D3DX_BC1 *pBC, _In_reads_(NUM_PIXELS_PER_BLOCK) cons
             return;
         }
 
-        uSteps = (uColorKey > 0) ? 3 : 4;
+        uSteps = (uColorKey > 0) ? 3 : 4;//如果有像素为ColorKey，则step设为3
     }
     else
     {
@@ -406,8 +406,8 @@ static void EncodeBC1(_Out_ D3DX_BC1 *pBC, _In_reads_(NUM_PIXELS_PER_BLOCK) cons
     // Quantize block to R56B5, using Floyd Stienberg error diffusion.  This 
     // increases the chance that colors will map directly to the quantized 
     // axis endpoints.
-    HDRColorA Color[NUM_PIXELS_PER_BLOCK];
-    HDRColorA Error[NUM_PIXELS_PER_BLOCK];
+    HDRColorA Color[NUM_PIXELS_PER_BLOCK];//放颜色
+    HDRColorA Error[NUM_PIXELS_PER_BLOCK];//放误差
 
     if (flags & BC_FLAGS_DITHER_RGB)
         memset(Error, 0x00, NUM_PIXELS_PER_BLOCK * sizeof(HDRColorA));
@@ -744,7 +744,7 @@ void D3DXEncodeBC1(uint8_t *pBC, const XMVECTOR *pColor, float alphaRef, DWORD f
 
             float fAlph = clr.a + fError[i];
 
-            Color[i].r = clr.r;
+			Color[i].r = clr.r;
             Color[i].g = clr.g;
             Color[i].b = clr.b;
             Color[i].a = (float) static_cast<int32_t>(clr.a + fError[i] + 0.5f);
@@ -778,12 +778,17 @@ void D3DXEncodeBC1(uint8_t *pBC, const XMVECTOR *pColor, float alphaRef, DWORD f
     {
         for(size_t i = 0; i < NUM_PIXELS_PER_BLOCK; ++i)
         {
-            XMStoreFloat4( reinterpret_cast<XMFLOAT4*>( &Color[i] ), pColor[i] );
+            XMStoreFloat4( reinterpret_cast<XMFLOAT4*>( &Color[i] ), pColor[i] );// 这是把一个block(pColor)里每个像素都拷贝到Color里
         }
     }
 
-    auto pBC1 = reinterpret_cast<D3DX_BC1 *>(pBC);
-    EncodeBC1(pBC1, Color, true, alphaRef, flags);
+	auto pBC1 = reinterpret_cast<D3DX_BC1 *>(pBC);// pBC1为D3DX_BC1指针类型，// BC1/DXT1 compression (4 bits per texel)
+																																		// 	struct D3DX_BC1
+																																		// 	{
+																																		// 		uint16_t    rgb[2]; // 565 colors 放两个16位的565颜色
+																																		// 		uint32_t    bitmap; // 2bits per pixel rgb bitmap (store index) 放16个像素的索引
+																																		// 	};
+    EncodeBC1(pBC1, Color, true, alphaRef, flags);// 把Color里的原图16个像素转换成DXT1形式的导出图的一个block（pBC1）
 }
 
 

@@ -33,7 +33,7 @@ const uint16_t F16MAX       = 0x7bff;   // MAXFLT bit pattern for XMHALF
 #define SIGN_EXTEND(x,nb) ((((x)&(1<<((nb)-1)))?((~0)<<(nb)):0)|(x))
 
 // Because these are used in SAL annotations, they need to remain macros rather than const values
-#define NUM_PIXELS_PER_BLOCK 16
+#define NUM_PIXELS_PER_BLOCK 16//每个block4x4，所以是16个像素
 #define BC6H_MAX_REGIONS 2
 #define BC6H_MAX_INDICES 16
 #define BC7_MAX_REGIONS 3
