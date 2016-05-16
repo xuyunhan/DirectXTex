@@ -20,7 +20,7 @@
 //#define COLOR_AVG_0WEIGHTS
 
 #include "BC.h"
-
+#include<time.h>
 using namespace DirectX::PackedVector;
 
 namespace DirectX
@@ -107,13 +107,13 @@ static void OptimizeRGB(_Out_ HDRColorA *pX, _Out_ HDRColorA *pY,
     }//找到两个极值
 
     // Diagonal axis
-    HDRColorA AB;//放两个极值RGB分量的差值
+    HDRColorA AB;//放两个极值RGB分量的差值，可以理解为两个极值点之间的向量
 
     AB.r = Y.r - X.r;
     AB.g = Y.g - X.g;
     AB.b = Y.b - X.b;
 
-    float fAB = AB.r * AB.r + AB.g * AB.g + AB.b * AB.b;//算两个极值差的平方和
+    float fAB = AB.r * AB.r + AB.g * AB.g + AB.b * AB.b;//算两个极值差的平方和，也就是向量模的平方
 
     // Single color block.. no need to root-find
     if(fAB < FLT_MIN)
@@ -123,15 +123,59 @@ static void OptimizeRGB(_Out_ HDRColorA *pX, _Out_ HDRColorA *pY,
         return;
     }
 
+	//xuyunhan
+	int iXr = 255 * X.r, iXg = 255 * X.g, iXb = 255 * X.b;
+	int iYr = 255 * Y.r, iYg = 255 * Y.g, iYb = 255 * Y.b;
+	int iMidr = (iXr + iYr) / 2, iMidg = (iXg + iYg) / 2, iMidb = (iXb + iYb) / 2;
+	HDRColorA color0, color3;//最后写入的两个颜色
+	HDRColorA color1, color2;//插值的两个颜色
+
+	HDRColorA oriColor[16];// = pPoints;
+	long iii = 0;
+	for (size_t i = 0; i < 16; i++)
+	{
+		oriColor[i] = pPoints[i];
+	}
+	clock_t start_time = clock();
+
+	for (size_t r1 = iXr; r1 <= iMidr; r1++)
+	{
+		for (size_t g1 = iXg; g1 <= iMidg; g1++)
+		{
+			for (size_t b1 = iXb; b1 <= iMidb; b1++)
+			{
+				for (size_t r2 = iYr; r2 >= iMidr; r2--)
+				{
+					for (size_t g2 = iYg; g2 >= iMidg; g2--)
+					{
+						for (size_t b2 = iYb; b2 >= iMidb; b2--)
+						{
+							color0.r = ((float)r1) / 255.0f; color0.g = ((float)g1) / 255.0f; color0.b = ((float)b1) / 255.0f;
+							color3.r = ((float)r2) / 255.0f; color3.g = ((float)g2) / 255.0f; color3.b = ((float)b2) / 255.0f;
+							color1.r = color0.r + (color3.r - color0.r)*0.333333f; color1.g = color0.g + (color3.g - color0.g)*0.333333f; color1.b = color0.b + (color3.b - color0.b)*0.333333f;
+							color2.r = color0.r + (color3.r - color0.r)*0.666667f; color2.g = color0.g + (color3.g - color0.g)*0.666667f; color2.b = color0.b + (color3.b - color0.b)*0.666667f;
+
+						}
+					}
+				}
+			}
+		}
+	}
+// 	wprintf(L" %\n",iii);//输出运行时间
+// 	getchar();
+	clock_t end_time = clock();
+// 	wprintf(L"Running time is: %f ms\n",(end_time - start_time) / CLOCKS_PER_SEC * 1000.0);//输出运行时间
+	//xuyunhan_end
+
     // Try all four axis directions, to determine which diagonal best fits data
     float fABInv = 1.0f / fAB;
 
-    HDRColorA Dir;
+    HDRColorA Dir;//极值方向
     Dir.r = AB.r * fABInv;
     Dir.g = AB.g * fABInv;
     Dir.b = AB.b * fABInv;
 
-    HDRColorA Mid;
+    HDRColorA Mid;//XY中点
     Mid.r = (X.r + Y.r) * 0.5f;
     Mid.g = (X.g + Y.g) * 0.5f;
     Mid.b = (X.b + Y.b) * 0.5f;
@@ -317,61 +361,11 @@ static void OptimizeRGB(_Out_ HDRColorA *pX, _Out_ HDRColorA *pY,
     pY->r = Y.r; pY->g = Y.g; pY->b = Y.b;
 }
 
-
 //-------------------------------------------------------------------------------------
-inline static void DecodeBC1( _Out_writes_(NUM_PIXELS_PER_BLOCK) XMVECTOR *pColor, _In_ const D3DX_BC1 *pBC, _In_ bool isbc1 )
-{
-    assert( pColor && pBC );
-    static_assert( sizeof(D3DX_BC1) == 8, "D3DX_BC1 should be 8 bytes" );
-
-    static XMVECTORF32 s_Scale = { 1.f/31.f, 1.f/63.f, 1.f/31.f, 1.f };
-
-    XMVECTOR clr0 = XMLoadU565( reinterpret_cast<const XMU565*>(&pBC->rgb[0]) );
-    XMVECTOR clr1 = XMLoadU565( reinterpret_cast<const XMU565*>(&pBC->rgb[1]) );
-
-    clr0 = XMVectorMultiply( clr0, s_Scale );
-    clr1 = XMVectorMultiply( clr1, s_Scale );
-
-    clr0 = XMVectorSwizzle<2, 1, 0, 3>( clr0 );
-    clr1 = XMVectorSwizzle<2, 1, 0, 3>( clr1 );
-
-    clr0 = XMVectorSelect( g_XMIdentityR3, clr0, g_XMSelect1110 );
-    clr1 = XMVectorSelect( g_XMIdentityR3, clr1, g_XMSelect1110 );
-
-    XMVECTOR clr2, clr3;
-    if ( isbc1 && (pBC->rgb[0] <= pBC->rgb[1]) )
-    {
-        clr2 = XMVectorLerp( clr0, clr1, 0.5f );
-        clr3 = XMVectorZero();  // Alpha of 0
-    }
-    else
-    {
-        clr2 = XMVectorLerp( clr0, clr1, 1.f/3.f );
-        clr3 = XMVectorLerp( clr0, clr1, 2.f/3.f );
-    }
-
-    uint32_t dw = pBC->bitmap;
-
-    for(size_t i = 0; i < NUM_PIXELS_PER_BLOCK; ++i, dw >>= 2)
-    {
-        switch(dw & 3)
-        {
-        case 0: pColor[i] = clr0; break;
-        case 1: pColor[i] = clr1; break;
-        case 2: pColor[i] = clr2; break;
-
-        case 3:
-        default: pColor[i] = clr3; break;
-        }
-    }
-}
-
-
-//-------------------------------------------------------------------------------------
-
 static void EncodeBC1(_Out_ D3DX_BC1 *pBC, _In_reads_(NUM_PIXELS_PER_BLOCK) const HDRColorA *pColor,
                       _In_ bool bColorKey, _In_ float alphaRef, _In_ DWORD flags)
 {
+	clock_t start_time = clock();
     assert( pBC && pColor );
     static_assert( sizeof(D3DX_BC1) == 8, "D3DX_BC1 should be 8 bytes" );
 
@@ -674,7 +668,68 @@ static void EncodeBC1(_Out_ D3DX_BC1 *pBC, _In_reads_(NUM_PIXELS_PER_BLOCK) cons
     }
 
     pBC->bitmap = dw;
+
+	clock_t end_time = clock();
+// 	wprintf(L"Running time is: %f ms\n",(end_time - start_time) / CLOCKS_PER_SEC * 1000.0);//输出运行时间
 }
+
+//xuyunhan
+
+static void My_EncodeBC1(_Out_ D3DX_BC1 *pBC, _In_reads_(NUM_PIXELS_PER_BLOCK) const HDRColorA *pColor,
+	_In_ bool bColorKey, _In_ float alphaRef, _In_ DWORD flags)
+{
+
+}
+
+//xuyunhan_end
+//-------------------------------------------------------------------------------------
+inline static void DecodeBC1( _Out_writes_(NUM_PIXELS_PER_BLOCK) XMVECTOR *pColor, _In_ const D3DX_BC1 *pBC, _In_ bool isbc1 )
+{
+    assert( pColor && pBC );
+    static_assert( sizeof(D3DX_BC1) == 8, "D3DX_BC1 should be 8 bytes" );
+
+    static XMVECTORF32 s_Scale = { 1.f/31.f, 1.f/63.f, 1.f/31.f, 1.f };
+
+    XMVECTOR clr0 = XMLoadU565( reinterpret_cast<const XMU565*>(&pBC->rgb[0]) );
+    XMVECTOR clr1 = XMLoadU565( reinterpret_cast<const XMU565*>(&pBC->rgb[1]) );
+
+    clr0 = XMVectorMultiply( clr0, s_Scale );
+    clr1 = XMVectorMultiply( clr1, s_Scale );
+
+    clr0 = XMVectorSwizzle<2, 1, 0, 3>( clr0 );
+    clr1 = XMVectorSwizzle<2, 1, 0, 3>( clr1 );
+
+    clr0 = XMVectorSelect( g_XMIdentityR3, clr0, g_XMSelect1110 );
+    clr1 = XMVectorSelect( g_XMIdentityR3, clr1, g_XMSelect1110 );
+
+    XMVECTOR clr2, clr3;
+    if ( isbc1 && (pBC->rgb[0] <= pBC->rgb[1]) )
+    {
+        clr2 = XMVectorLerp( clr0, clr1, 0.5f );
+        clr3 = XMVectorZero();  // Alpha of 0
+    }
+    else
+    {
+        clr2 = XMVectorLerp( clr0, clr1, 1.f/3.f );
+        clr3 = XMVectorLerp( clr0, clr1, 2.f/3.f );
+    }
+
+    uint32_t dw = pBC->bitmap;
+
+    for(size_t i = 0; i < NUM_PIXELS_PER_BLOCK; ++i, dw >>= 2)
+    {
+        switch(dw & 3)
+        {
+        case 0: pColor[i] = clr0; break;
+        case 1: pColor[i] = clr1; break;
+        case 2: pColor[i] = clr2; break;
+
+        case 3:
+        default: pColor[i] = clr3; break;
+        }
+    }
+}
+
 
 //-------------------------------------------------------------------------------------
 #ifdef COLOR_WEIGHTS

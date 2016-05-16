@@ -14,7 +14,7 @@
 //-------------------------------------------------------------------------------------
 
 #include "directxtexp.h"
-
+#include <time.h>
 #ifdef _OPENMP
 #include <omp.h>
 #pragma warning(disable : 4616 6993)
@@ -231,8 +231,9 @@ static HRESULT _CompressBC_Parallel( _In_ const Image& image, _In_ const Image& 
     const size_t nBlocks = std::max<size_t>(1, (image.width + 3) / 4 ) * std::max<size_t>(1, (image.height + 3) / 4 );//nBlocks为Block的数量，因为Block为4*4，所以block数量为(宽/4)*(长/4)
 
     bool fail = false;
-
-#pragma omp parallel for
+	clock_t start_time = clock();
+	int jindu = 0;
+ #pragma omp parallel for
     for( int nb=0; nb < static_cast<int>( nBlocks ); ++nb )
     {
         int nbWidth = std::max<int>(1, int( (image.width + 3) / 4 ) );//宽的方向上Block的数量
@@ -316,7 +317,11 @@ static HRESULT _CompressBC_Parallel( _In_ const Image& image, _In_ const Image& 
             pfEncode( pDest, temp, bcflags );
         else
             D3DXEncodeBC1( pDest, temp, alphaRef, bcflags );//temp为block，pDest为导出的纹理对应的一个像素点
+		jindu++;
+ 		wprintf(L"%f%%\n", ((float)jindu)/((float)nBlocks)*100.0);
     }
+	clock_t end_time = clock();
+ 	wprintf(L"Running time is: %lf ms\n", (end_time - start_time) / CLOCKS_PER_SEC * 1000.0);//输出运行时间
 
     return (fail) ? E_FAIL : S_OK;
 }
